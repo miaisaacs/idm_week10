@@ -95,17 +95,62 @@ if(F){
 # [Q2] What is R0 for the entire population? What would the average age of infection be, given this R0 value and a life span of 75 yr? (0.5pt)
 # [Hint: use the same method we used for risk structured model, ignore death rate and aging rate]
 
+beta= matrix(c(1100,110,110,220),2,2) # the beta matrix
+nC = 0.2;  # % children = 15/75; 
+nA = 0.8; # % adults = 1-nC;
+nu = 1/75; # birth rate, per year
 
+n=c(nC,nA, nu)      # n is the vector storing th proportion in each group
+n.matrix=diag(n,2,2)  # matrix related to the population size in each group
+# to see it:
+View(n.matrix)
+
+gamma=1 / (14/365); b = 1;
+R.matrix=n.matrix %*% beta / gamma
+# to see the output of the eigen function:
+eigen(R.matrix)
+## To find R0
+R0=eigen(R.matrix)$values[1]
+
+L=75
+infection_age = L/R0
 
 
 # [Q3] What is the force of infection for each of the two groups, when the disease / your simulation reaches equilibrium? (0.5pt)[Hint: What is the force of infection?]
 
+# Extract the last row of the simulation (t = 100)
+IC_eq <- tail(simSIR2[,'IC'], 1)
+IA_eq <- tail(simSIR2[,'IA'], 1)
+
+# Force of infection for children and adults
+lambda_C <- betaCC * (IC_eq / nC) + betaCA * (IA_eq / nA)
+lambda_A <- betaAC * (IC_eq / nC) + betaAA * (IA_eq / nA)
+
+lambda_C
+lambda_A
 
 
 
 # [Q4] What is the force of infection for each of the two groups, given the parameters and initial state variables at the beginning of the simulation? (0.5pt)[Hint: What is the force of infection?]
 
+# Initial infected and population proportions
+IC0 <- 0.0001
+IA0 <- 0.0001
+nC <- 0.2
+nA <- 0.8
 
+# Transmission rates
+betaCC <- 1100
+betaCA <- 110
+betaAC <- 110
+betaAA <- 220
+
+# Force of infection at time 0
+lambda_C0 <- betaCC * (IC0 / nC) + betaCA * (IA0 / nA)
+lambda_A0 <- betaAC * (IC0 / nC) + betaAA * (IA0 / nA)
+
+lambda_C0
+lambda_A0
 
 
 
@@ -116,6 +161,71 @@ if(F){
 # (Submit the finished code in your lab report.)  
 
 
+# Modified 2-age group SIR model with vaccination
+SIR2ageVacc <- function(t, state, parameters) {
+  with(as.list(c(state, parameters)), {
+    
+    # Force of infection for each group
+    lambdaC <- betaCC * IC + betaCA * IA
+    lambdaA <- betaAC * IC + betaAA * IA
+    
+    # Differential equations
+    dSC = nu * (1 - p) - SC * lambdaC - muC * SC - lC * SC
+    dIC = SC * lambdaC - gamma * IC - muC * IC - lC * IC
+    dRC = nu * p + gamma * IC - muC * RC - lC * RC
+    
+    dSA = lC * SC - SA * lambdaA - muA * SA
+    dIA = lC * IC + SA * lambdaA - gamma * IA - muA * IA
+    dRA = lC * RC + gamma * IA - muA * RA
+    
+    return(list(c(dSC, dIC, dRC, dSA, dIA, dRA)))
+  })
+}
+
+# Parameters (same as before)
+betaCC = 1100
+betaCA = betaAC = 110
+betaAA = 220
+gamma = 1 / (14 / 365)
+lC = 1 / 15
+muC = 0
+muA = 1 / (75 - 15)
+nu = 1 / 75
+p = 0.5  # 50% of newborns vaccinated
+
+nC = 0.2
+nA = 0.8
+
+# Initial conditions
+SC0 = 0.1
+IC0 = 0.0001
+RC0 = nC - SC0 - IC0
+
+SA0 = 0.1
+IA0 = 0.0001
+RA0 = nA - SA0 - IA0
+
+state = c(SC = SC0, IC = IC0, RC = RC0,
+          SA = SA0, IA = IA0, RA = RA0)
+
+parameters = c(betaCC = betaCC, betaCA = betaCA, betaAA = betaAA, betaAC = betaAC,
+               gamma = gamma, lC = lC, muC = muC, muA = muA, nu = nu, p = p)
+
+times = seq(0, 100, by = 1)
+
+# Run simulation
+simVax = ode(y = state, times = times, func = SIR2ageVacc, parms = parameters)
+
+# Fraction recovered (Ri / ni)
+RC_frac = simVax[, "RC"] / nC * 100
+RA_frac = simVax[, "RA"] / nA * 100
+
+# Plotting
+plot(simVax[, "time"], RC_frac, type = "l", col = "pink", lwd = 2,
+     xlab = "Time (years)", ylab = "Percent Recovered (%)",
+     main = "Recovered Population Over Time (p = 0.5)", ylim = c(0, max(RC_frac, RA_frac)))
+lines(simVax[, "time"], RA_frac, col = "turquoise", lwd = 2)
+legend("bottomright", legend = c("Children", "Adults"), col = c("pink", "turquoise"), lwd = 2)
 
 
 
@@ -130,3 +240,6 @@ if(F){
 ####################
 ## TEST DIFFERENT VACCINATION RATES
 ## use the R Shiny App: ShinyApp_Vac.R
+
+R0s=15
+p = 1 - (1 / R0s)
